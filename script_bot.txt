@@ -1,0 +1,247 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#import time
+#time.sleep(60)
+
+import telebot
+from telebot import types
+import time
+import os
+import requests
+import json
+
+TOKEN = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+
+knownUsers = [XXXXXXXXX] # todo: save these in a file,
+userStep = {} # so they won't reset every time the bot restarts
+
+commands = { # command description used in the "help" command
+             'start': 'Iniciar el bot',
+             'ayuda': 'Da informacion sobre los comandos disponibles',
+             'exec': 'Ejecuta un comando',
+             'temp_rpi': 'Comprueba la temperatura de la raspberry',
+             'reboot': 'Reinicia el servidor',
+             'datos': 'Consulta datos en tiempo real',
+             'on': 'Sistema automático encendido',
+             'off': 'Modo manual',
+             'cerrado': 'Estado 1 del modo manual',
+             'medio': 'Estado 2 del modo manual',
+             'abierto': 'Estado 3 del modo manual'
+}
+
+hideBoard = types.ReplyKeyboardRemove() # if sent as reply_markup, will hide the keyboard
+
+# error handling if user isn't known yet
+# (obsolete once known users are saved to file, because all users
+# had to use the /start command and are therefore known to the bot)
+def get_user_step(uid):
+    if uid in userStep:
+        return userStep[uid]
+    else:
+        knownUsers.append(uid)
+        userStep[uid] = 0
+        print ("New user detected, who hasn't used \"/start\" yet")
+        return 0
+
+# only used for console output now
+def listener(messages):
+    """
+    When new messages arrive TeleBot will call this function.
+    """
+    for m in messages:
+        if m.content_type == 'text':
+            # print the sent message to the console
+            print (str(m.chat.first_name) + " [" + str(m.chat.id) + "]: " + m.text)
+
+
+bot = telebot.TeleBot(TOKEN)
+bot.set_update_listener(listener) # register listener
+
+# handle the "/start" command
+@bot.message_handler(commands=['start'])
+def command_start(m):
+    cid = m.chat.id
+    if cid not in knownUsers:
+        knownUsers.append(cid)
+        userStep[cid] = 0
+#        command_help(m) # show the new user the help page
+
+# help page
+@bot.message_handler(commands=['ayuda'])
+def command_help(m):
+    cid = m.chat.id
+    help_text = "Estos son los comandos disponibles: \n"
+    for key in commands:
+        help_text += "/" + key + ": "
+        help_text += commands[key] + "\n"
+    bot.send_message(cid, help_text)
+
+# Reinicia servidor
+@bot.message_handler(commands=['reboot'])
+def command_long_text(m):
+    cid = m.chat.id
+    bot.send_message(cid, "Reiniciando el servidor...")
+    bot.send_chat_action(cid, 'typing')
+    time.sleep(3)
+    bot.send_message(cid, ".")
+    os.system("sudo shutdown -r now")
+
+# Mira temperaturas
+@bot.message_handler(commands=['temp_rpi'])
+def command_long_text(m):
+    cid = m.chat.id
+    bot.send_message(cid, "Comprobando la temperatura de tu equipo...")
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+    f = os.popen("temperatura_raspberry")
+    result = f.read()
+    bot.send_message(cid, ""+result)
+
+# Ejecuta un comando
+@bot.message_handler(commands=['exec'])
+def command_long_text(m):
+    cid = m.chat.id
+    bot.send_message(cid, "Ejecutando: "+m.text[len("/exec"):])
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 sec>    time.sleep(2)
+    f = os.popen(m.text[len("/exec"):])
+    result = f.read()
+    bot.send_message(cid, "Resultado: "+result)
+
+# Mira datos tiempo real
+@bot.message_handler(commands=['datos'])
+def command_long_text(m):
+    cid = m.chat.id
+    api_url_status="http://192.168.1.200/device2/status"
+    api_url_temp="http://192.168.1.200/device2/temp"
+    api_url_hum="http://192.168.1.200/device2/hum"
+    r1 = requests.get(api_url_status)
+    if r1.status_code != 200:
+            print ("Error:", r1.status_code)
+    else:
+            print("Respuesta estado")
+            print(r1.text)
+
+    r2 = requests.get(api_url_temp)
+    if r2.status_code != 200:
+            print ("Error:", r2.status_code)
+    else:
+            print("Respuesta temperatura")
+            print(r2.text + " ºC")
+    r3 = requests.get(api_url_hum)
+    if r3.status_code != 200:
+            print ("Error:", r3.status_code)
+    else:
+            print("Respuesta humedad")
+            print(r3.text + " %")
+
+    bot.send_message(cid, "Respuesta estado: "+r1.text+"\nTemperatura: "+r2.text+" ºC\nHumedad: "+r3.text+" %")
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+
+# POST enciende sistema
+@bot.message_handler(commands=['on'])
+def command_long_text(m):
+    cid = m.chat.id
+    api_url="http://192.168.1.200/device2/sisOn"
+    r1 = requests.get(api_url)
+    if r1.status_code != 200:
+            print ("Error:", r1.status_code)
+    else:
+            print("Respuesta :")
+            print(r1.text)
+
+    bot.send_message(cid, r1.text)
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+
+# POST estado 1
+@bot.message_handler(commands=['cerrado'])
+def command_long_text(m):
+    cid = m.chat.id
+    api_url="http://192.168.1.200/device2/status1"
+    r1 = requests.get(api_url)
+    if r1.status_code != 200:
+            print ("Error:", r1.status_code)
+    else:
+            print("Respuesta :")
+            print(r1.text)
+
+    bot.send_message(cid, r1.text)
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+
+# POST estado 2
+@bot.message_handler(commands=['medio'])
+def command_long_text(m):
+    cid = m.chat.id
+    api_url="http://192.168.1.200/device2/status2"
+    r1 = requests.get(api_url)
+    if r1.status_code != 200:
+            print ("Error:", r1.status_code)
+    else:
+            print("Respuesta :")
+            print(r1.text)
+
+    bot.send_message(cid, r1.text)
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+
+# POST estado 3
+@bot.message_handler(commands=['abierto'])
+def command_long_text(m):
+    cid = m.chat.id
+    api_url="http://192.168.1.200/device2/status3"
+    r1 = requests.get(api_url)
+    if r1.status_code != 200:
+            print ("Error:", r1.status_code)
+    else:
+            print("Respuesta :")
+            print(r1.text)
+
+    bot.send_message(cid, r1.text)
+    bot.send_chat_action(cid, 'typing') # show the bot "typing" (max. 5 secs)
+    time.sleep(2)
+
+# filter on a specific message
+@bot.message_handler(func=lambda message: message.text == "Hola")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Muy buenas")
+@bot.message_handler(func=lambda message: message.text == "Que eres?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Soy el bot CerdIoT, asistente de granjas. Si quieres saber los comados que puedo hacer escribe /ayuda")
+@bot.message_handler(func=lambda message: message.text == "¿Que eres?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Soy el bot CerdIoT, asistente de granjas. Si quieres saber los comados que puedo hacer escribe /ayuda")
+@bot.message_handler(func=lambda message: message.text == "Q eres?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Soy el bot CerdIoT, asistente de granjas. Si quieres saber los comados que puedo hacer escribe /ayuda")
+@bot.message_handler(func=lambda message: message.text == "Quien eres?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Soy el bot CerdIoT, asistente de granjas. Si quieres saber los comados que puedo hacer escribe /ayuda")
+@bot.message_handler(func=lambda message: message.text == "Que mides?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "De momento recojo datos de temperatura y humedad, pero pronto haré más cosas")
+@bot.message_handler(func=lambda message: message.text == "Q mides?")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "De momento recojo datos de temperatura y humedad, pero pronto haré más cosas")
+@bot.message_handler(func=lambda message: message.text == "Di gracias")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Gracias por escucharnos!!")
+@bot.message_handler(func=lambda message: message.text == "Hijo puta")
+def command_text_hi(m):
+    bot.send_message(m.chat.id, "Tus muertos")
+    # default handler for every other text
+
+
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def command_default(m):
+    # this is the standard reply to a normal message
+    bot.send_message(m.chat.id, "No te entiendo, prueba con /ayuda")
+
+while True:
+        try:
+                bot.polling()
+        except Exception as e:
+                logger.error(e)
+                time.sleep(15)
+
